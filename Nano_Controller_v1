@@ -7,20 +7,30 @@
  */
 
 /*-----( Import needed libraries )-----*/
-#include <OneWire.h>
-#include <DallasTemperature.h>
+#include <SPI.h>
+#include <Ethernet.h>
 #include <Wire.h>
 #include "RTClib.h"
+#include <SD.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 /*-----( Declare Constants )-----*/
 RTC_DS1307 RTC;
+const int ONE_WIRE_BUS = 2;
+
+byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+byte ip[] = {192,168,1, 10 };
+
+int lastTime = -1;
+float temp;            // float for temperature value from DS18B20
+Server server(80);
+
+const int chipSelect = 4;      // CS for SD card 
 
 #define RELAY_ON 0
 #define RELAY_OFF 1
 
-/*-----( Declare objects )-----*/
-
-/*-----( Declare Variables )-----*/
 //Pin Assignments
 //Relays
 #define Relay_1  22  
@@ -34,19 +44,37 @@ RTC_DS1307 RTC;
 //Sensors
 #define FloatSw1  3
 #define FloatSw2  4
-#define TempProbe 2
+
+/*-----( Declare objects )-----*/
+
+/*-----( Declare Variables )-----*/
+
+
+
 
 
 void setup()   /****** SETUP: RUNS ONCE ******/
 {
  Serial.begin(57600);
+ Ethernet.begin(mac, ip);
+ server.begin();
  Wire.begin();
+ sensors.begin();            // for DS18B20 sensor
  RTC.begin();
+ RTC.adjust(DateTime(__DATE__, __TIME__));
+ Serial.print("Initializing SD card...");
+ pinMode(10, OUTPUT);
  
  if (! RTC.isrunning()) {
  Serial.println("RTC is NOT running!");
  // following line sets the RTC to the date & time this sketch was compiled
  //RTC.adjust(DateTime(__DATE__, __TIME__));
+ 
+ if (!SD.begin(chipSelect)) {
+  Serial.println("Card failed, or not present"); // don't do anything more:
+  return;
+  }
+ Serial.println("card initialized.");
  
 //-------( Initialize Pins so relays are inactive at reset)----
   digitalWrite(Relay_1, RELAY_OFF);
@@ -67,7 +95,7 @@ void setup()   /****** SETUP: RUNS ONCE ******/
   pinMode(Relay_6, OUTPUT);
   pinMode(Relay_7, OUTPUT);
   pinMode(Relay_8, OUTPUT);
-  delay(4000); //Check that all relays are inactive at Reset
+  delay(4000);
 
 }//--(end setup )---
 
@@ -75,16 +103,98 @@ void setup()   /****** SETUP: RUNS ONCE ******/
 void loop()   /****** LOOP: RUNS CONSTANTLY ******/
 {
 DateTime now = RTC.now();
- Serial.print(now.hour(), DEC);
- Serial.print(':');
- Serial.print(now.minute(), DEC);
- Serial.print(':');
- Serial.print(now.second(), DEC);
- Serial.println()
 
-}//--(end main loop )---
-
+  int time = now.second();
+  if (abs(time - lastTime) > 5)
+  {
+    int chk = DHT.read22(DHT22_PIN);                       // get data from DHT22
+    sensors.requestTemperatures();                         // get data from DS18B20
+    temp = sensors.getTempCByIndex(0);                  
 
 
-//*********( THE END )***********
+    File dataFile = SD.open("datalog.CSV", FILE_WRITE);
 
+    // if the file is available, write to it:
+    if (dataFile) {
+      dataFile.print(now.day(), DEC);
+      dataFile.print('/');
+      dataFile.print(now.month(), DEC);
+      dataFile.print('/');
+      dataFile.print(now.year(), DEC);
+      dataFile.print(" , ");
+      dataFile.print(now.hour(), DEC);
+      dataFile.print(':');
+      dataFile.print(now.minute(), DEC);
+      dataFile.print(" , ");
+      dataFile.print((float)DHT.temperature);
+      dataFile.print(" , ");
+      dataFile.println((float)temp);
+      dataFile.close();
+      // print to the serial port too:
+      Serial.print("DHT = ");
+      Serial.println(DHT.temperature);
+      Serial.print("DS18B20 = ");
+      Serial.println(temp);
+    }  
+    // if the file isn't open, pop up an error:
+    else {
+      Serial.println("error opening datalog.CSV");
+    }
+    lastTime = time;
+  }
+
+  Client client = server.available();
+  if (client) {
+    // an http request ends with a blank line
+    boolean currentLineIsBlank = true;
+    while (client.connected()) {
+      if (client.available()) {
+        char c = client.read();
+        if (c == '\n' && currentLineIsBlank) {
+          // send a standard http response header
+          client.println("HTTP/1.1 200 OK");
+          client.println("Content-Type: text/html");
+          client.println();
+          
+          client.print(now.day(), DEC);
+          client.print('/');
+          client.print(now.month(), DEC);
+          client.print('/');
+          client.print(now.year(), DEC);
+          client.print(' ');
+          client.print(now.hour(), DEC);
+          client.print(':');
+          client.print(now.minute(), DEC);
+          client.println("<br />");
+          client.print("Arduino powered webserver");
+          client.println("<br />");
+          client.print("Serving temperature and humidity values from a DHT22 and DS18B20 sensor");
+          client.println("<br />");
+          client.print("Inside temperature (oC): ");
+          client.print(DHT.temperature);
+          client.println("<br />");
+          client.print("Humidity (%): ");
+          client.print(DHT.humidity);
+          client.println("<br />"); 
+          client.print("Outside temperature (oC): ");
+          client.print(temp); 
+          client.println("<br />"); 
+
+          break;
+        }
+        if (c == '\n') {
+          // you're starting a new line
+          currentLineIsBlank = true;
+        } 
+        else if (c != '\r') {
+          // you've gotten a character on the current line
+          currentLineIsBlank = false;
+        }
+      }
+    }
+    // give the web browser time to receive the data
+    delay(1);
+    // close the connection:
+    client.stop();
+  } 
+}
