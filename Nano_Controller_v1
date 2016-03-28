@@ -1,200 +1,77 @@
-/* Arduino Controller for Nano Aquarium V1  3/27/16 Nolan K Brown
- YourDuino Multiple DS18B20 Temperature Sensors on 1 wire Connections:
- DS18B20 Pinout (Left to Right, pins down, flat side toward you)
- - Left   = Ground
- - Center = Signal (Pin 2):  (with 3.3K to 4.7K resistor to +5 or 3.3 )
- - Right  = +5 or +3.3 V
- */
-
-/*-----( Import needed libraries )-----*/
-#include <SPI.h>
-#include <Ethernet.h>
+  
 #include <Wire.h>
 #include "RTClib.h"
-#include <SD.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-/*-----( Declare Constants )-----*/
-RTC_DS1307 RTC;
-const int ONE_WIRE_BUS = 2;
+RTC_DS1307 RTC; //RTC is plugged into pins 20 - 21 on MEGA SDA/SCL
+ 
+#define ONE_WIRE_BUS 2 // Data wire is plugged into pin 2 on the Arduino
 
-byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
-byte ip[] = {192,168,1, 10 };
+#define RelayLED      22 //RELAY1
+#define RelayCircPump 24 //RELAY2
+#define RelayPwrHead  26 //RELAY3
+#define RelayHeater   28 //RELAY4
+#define RelayATOPump  30 //RELAY5
+//#define Relay???      ?? //RELAY6
+//#define Relay???      ?? //RELAY7
+//#define Relay???      ?? //RELAY8 
 
-int lastTime = -1;
-float temp;            // float for temperature value from DS18B20
-Server server(80);
-
-const int chipSelect = 4;      // CS for SD card 
-
-#define RELAY_ON 0
-#define RELAY_OFF 1
-
-//Pin Assignments
-//Relays
-#define Relay_1  22  
-#define Relay_2  24
-#define Relay_3  26
-#define Relay_4  28
-#define Relay_5  30
-#define Relay_6  32
-#define Relay_7  34
-#define Relay_8  36
-//Sensors
-#define FloatSw1  3
-#define FloatSw2  4
-
-/*-----( Declare objects )-----*/
-
-/*-----( Declare Variables )-----*/
-
-
-
-
-
-void setup()   /****** SETUP: RUNS ONCE ******/
+OneWire oneWire(ONE_WIRE_BUS);
+ 
+// Pass our oneWire reference to Dallas Temperature.
+DallasTemperature sensors(&oneWire);
+ 
+void setup(void)
 {
- Serial.begin(57600);
- Ethernet.begin(mac, ip);
- server.begin();
- Wire.begin();
- sensors.begin();            // for DS18B20 sensor
- RTC.begin();
- RTC.adjust(DateTime(__DATE__, __TIME__));
- Serial.print("Initializing SD card...");
- pinMode(10, OUTPUT);
- 
- if (! RTC.isrunning()) {
- Serial.println("RTC is NOT running!");
- // following line sets the RTC to the date & time this sketch was compiled
- //RTC.adjust(DateTime(__DATE__, __TIME__));
- 
- if (!SD.begin(chipSelect)) {
-  Serial.println("Card failed, or not present"); // don't do anything more:
-  return;
-  }
- Serial.println("card initialized.");
- 
-//-------( Initialize Pins so relays are inactive at reset)----
-  digitalWrite(Relay_1, RELAY_OFF);
-  digitalWrite(Relay_2, RELAY_OFF);
-  digitalWrite(Relay_3, RELAY_OFF);
-  digitalWrite(Relay_4, RELAY_OFF); 
-  digitalWrite(Relay_5, RELAY_OFF);
-  digitalWrite(Relay_6, RELAY_OFF);
-  digitalWrite(Relay_7, RELAY_OFF);
-  digitalWrite(Relay_8, RELAY_OFF);
+  Serial.begin(57600);
+    Wire.begin();
+    RTC.begin();
+    sensors.begin();
   
-//---( THEN set pins as outputs )----  
-  pinMode(Relay_1, OUTPUT);   
-  pinMode(Relay_2, OUTPUT);  
-  pinMode(Relay_3, OUTPUT);  
-  pinMode(Relay_4, OUTPUT);
-  pinMode(Relay_5, OUTPUT);
-  pinMode(Relay_6, OUTPUT);
-  pinMode(Relay_7, OUTPUT);
-  pinMode(Relay_8, OUTPUT);
-  delay(4000);
-
-}//--(end setup )---
-
-
-void loop()   /****** LOOP: RUNS CONSTANTLY ******/
-{
-DateTime now = RTC.now();
-
-  int time = now.second();
-  if (abs(time - lastTime) > 5)
-  {
-    int chk = DHT.read22(DHT22_PIN);                       // get data from DHT22
-    sensors.requestTemperatures();                         // get data from DS18B20
-    temp = sensors.getTempCByIndex(0);                  
-
-
-    File dataFile = SD.open("datalog.CSV", FILE_WRITE);
-
-    // if the file is available, write to it:
-    if (dataFile) {
-      dataFile.print(now.day(), DEC);
-      dataFile.print('/');
-      dataFile.print(now.month(), DEC);
-      dataFile.print('/');
-      dataFile.print(now.year(), DEC);
-      dataFile.print(" , ");
-      dataFile.print(now.hour(), DEC);
-      dataFile.print(':');
-      dataFile.print(now.minute(), DEC);
-      dataFile.print(" , ");
-      dataFile.print((float)DHT.temperature);
-      dataFile.print(" , ");
-      dataFile.println((float)temp);
-      dataFile.close();
-      // print to the serial port too:
-      Serial.print("DHT = ");
-      Serial.println(DHT.temperature);
-      Serial.print("DS18B20 = ");
-      Serial.println(temp);
-    }  
-    // if the file isn't open, pop up an error:
-    else {
-      Serial.println("error opening datalog.CSV");
-    }
-    lastTime = time;
+  if (! RTC.isrunning()) {
+    Serial.println("RTC is NOT running!");
+    // following line sets the RTC to the date & time this sketch was compiled
+    RTC.adjust(DateTime(__DATE__, __TIME__));
   }
+ 
+pinMode(RelayLED,OUTPUT); 
+pinMode(RelayCircPump,OUTPUT); 
+pinMode(RelayPwrHead,OUTPUT);
+pinMode(RelayHeater,OUTPUT);
+pinMode(RelayATOPump,OUTPUT);
 
-  Client client = server.available();
-  if (client) {
-    // an http request ends with a blank line
-    boolean currentLineIsBlank = true;
-    while (client.connected()) {
-      if (client.available()) {
-        char c = client.read();
-        if (c == '\n' && currentLineIsBlank) {
-          // send a standard http response header
-          client.println("HTTP/1.1 200 OK");
-          client.println("Content-Type: text/html");
-          client.println();
-          
-          client.print(now.day(), DEC);
-          client.print('/');
-          client.print(now.month(), DEC);
-          client.print('/');
-          client.print(now.year(), DEC);
-          client.print(' ');
-          client.print(now.hour(), DEC);
-          client.print(':');
-          client.print(now.minute(), DEC);
-          client.println("<br />");
-          client.print("Arduino powered webserver");
-          client.println("<br />");
-          client.print("Serving temperature and humidity values from a DHT22 and DS18B20 sensor");
-          client.println("<br />");
-          client.print("Inside temperature (oC): ");
-          client.print(DHT.temperature);
-          client.println("<br />");
-          client.print("Humidity (%): ");
-          client.print(DHT.humidity);
-          client.println("<br />"); 
-          client.print("Outside temperature (oC): ");
-          client.print(temp); 
-          client.println("<br />"); 
+}
+ 
+void loop(void)
+{
+  // call sensors.requestTemperatures() to issue a global temperature
+  // request to all devices on the bus
+  Serial.print(" Requesting temperatures...");
+  sensors.requestTemperatures(); // Send the command to get temperatures
+  Serial.println("DONE");
 
-          break;
-        }
-        if (c == '\n') {
-          // you're starting a new line
-          currentLineIsBlank = true;
-        } 
-        else if (c != '\r') {
-          // you've gotten a character on the current line
-          currentLineIsBlank = false;
-        }
-      }
-    }
-    // give the web browser time to receive the data
-    delay(1);
-    // close the connection:
-    client.stop();
-  } 
+  Serial.print("Temperature for Device 1 is: ");
+  Serial.print(sensors.getTempCByIndex(0)); // Why "byIndex"? 
+    // You can have more than one IC on the same bus. 
+    // 0 refers to the first IC on the wire
+	
+	void loop () {
+    DateTime now = RTC.now();
+ 
+    Serial.print(now.year(), DEC);
+    Serial.print('/');
+    Serial.print(now.month(), DEC);
+    Serial.print('/');
+    Serial.print(now.day(), DEC);
+    Serial.print(' ');
+    Serial.print(now.hour(), DEC);
+    Serial.print(':');
+    Serial.print(now.minute(), DEC);
+    Serial.print(':');
+    Serial.print(now.second(), DEC);
+    Serial.println();
+	delay(3000);
+	
+ 
 }
