@@ -1,29 +1,41 @@
-  
 #include <Wire.h>
-#include "RTClib.h"
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include "RTClib.h"
+
+
+//set device address for DS18B20 sensor
+DeviceAddress temp_addr = {0x28, 0xFF, 0x8F, 0x06, 0x66, 0x14, 0x01, 0x18};
+
+#define ONE_WIRE_BUS 2
+OneWire oneWire(ONE_WIRE_BUS);
+
+DallasTemperature sensors(&oneWire);
+
+float temperature;
+
+int max_temp = 30; //maximum temperature of aquarium - switch off voltage to heater for safety
 
 RTC_DS1307 RTC; //RTC is plugged into pins 20 - 21 on MEGA SDA/SCL
- 
-#define ONE_WIRE_BUS 2 // Data wire is plugged into pin 2 on the Arduino
 
-#define RelayLED      22 //RELAY1
-#define RelayCircPump 24 //RELAY2
-#define RelayPwrHead  26 //RELAY3
-#define RelayHeater   28 //RELAY4
-#define RelayATOPump  30 //RELAY5
-//#define Relay???      ?? //RELAY6
-//#define Relay???      ?? //RELAY7
-//#define Relay???      ?? //RELAY8 
+// RELAYS
+const byte lightsRelay = 22;
+const byte pumpRelay   = 24;
+const byte powHeadRelay= 26
+const byte heaterRelay = 28;
+const byte atoPumpRelay = 30;
 
-OneWire oneWire(ONE_WIRE_BUS);
- 
-// Pass our oneWire reference to Dallas Temperature.
-DallasTemperature sensors(&oneWire);
- 
-void setup(void)
-{
+//BUTTONS
+const byte LightButton = 11;
+
+
+//light button variables
+int LightButtonState = LOW;      // the current state of the output pin
+int reading;           // the current reading from the input pin
+int previous = HIGH;    // the previous reading from the input pin
+
+// the setup routine runs once when you press reset:
+void setup() {
   Serial.begin(57600);
     Wire.begin();
     RTC.begin();
@@ -34,44 +46,128 @@ void setup(void)
     // following line sets the RTC to the date & time this sketch was compiled
     RTC.adjust(DateTime(__DATE__, __TIME__));
   }
- 
-pinMode(RelayLED,OUTPUT); 
-pinMode(RelayCircPump,OUTPUT); 
-pinMode(RelayPwrHead,OUTPUT);
-pinMode(RelayHeater,OUTPUT);
-pinMode(RelayATOPump,OUTPUT);
+  
+  sensors.begin();// temp sensor
+  sensors.setResolution(temp_addr, 10);
 
-}
- 
-void loop(void)
-{
-  // call sensors.requestTemperatures() to issue a global temperature
-  // request to all devices on the bus
-  Serial.print(" Requesting temperatures...");
-  sensors.requestTemperatures(); // Send the command to get temperatures
-  Serial.println("DONE");
+  // initialize the digital pin as an output.
+  pinMode(lightsRelay, OUTPUT);
+  pinMode(heaterRelay, OUTPUT);
+  pinMode(pumpRelay, OUTPUT);
+  pinMode(atoPumpRelay, OUTPUT);
+  pinMode(powHeadRelay, OUTPUT);
 
-  Serial.print("Temperature for Device 1 is: ");
-  Serial.print(sensors.getTempCByIndex(0)); // Why "byIndex"? 
-    // You can have more than one IC on the same bus. 
-    // 0 refers to the first IC on the wire
-	
-	void loop () {
-    DateTime now = RTC.now();
- 
-    Serial.print(now.year(), DEC);
-    Serial.print('/');
-    Serial.print(now.month(), DEC);
-    Serial.print('/');
-    Serial.print(now.day(), DEC);
-    Serial.print(' ');
-    Serial.print(now.hour(), DEC);
-    Serial.print(':');
-    Serial.print(now.minute(), DEC);
-    Serial.print(':');
-    Serial.print(now.second(), DEC);
-    Serial.println();
-	delay(3000);
-	
- 
+  // initialize the feed and light button as INPUT PULLUP (when button is pressed the status is LOW).
+  pinMode(LightButton, INPUT_PULLUP);
+
+  Serial.println("Startup Completed");
+
+  RTC.updateTime();
+
+  //set initial mode
+  if ((RTC.hours >= 10) && (RTC.hours < 18) ) {
+    Day ();
+  }
+  else {
+    Night ();
+  }
+
+  HeaterOn();//start heater
+  PumpOn();//start pump
+
+  //Alarms schedule
+
+  //for test
+  /*Alarm.alarmRepeat(18,44,5, Feeding);
+  Alarm.alarmRepeat(18,44,15, Day);
+  Alarm.alarmRepeat(18,44,25, Afternoon);
+  Alarm.alarmRepeat(18,44,35, Feeding);
+  Alarm.alarmRepeat(18,44,45, Day);
+  Alarm.alarmRepeat(18,44,55, Night);*/
+
+  //real
+  Alarm.alarmRepeat(10, 0, 0, Day);
+  Alarm.alarmRepeat(18, 0, 0, Night); //night mode
 }
+
+// the loop routine runs over and over again forever:
+void loop() {
+
+  RTC.updateTime(); //read time from RTC DS1307
+
+  Serial.print(RTC.hours, DEC);
+  Serial.print(':');
+  Serial.print(RTC.minutes, DEC);
+  Serial.print(':');
+  Serial.print(RTC.seconds, DEC);
+
+
+   // temp sensor reading
+  sensors.requestTemperatures();
+  temperature = sensors.getTempC(temp_addr);
+  Serial.print(" temp - ");
+  Serial.println(temperature);
+
+  //safety precaution - heater off if temperature > 30 C
+  if (temperature > max_temp) {
+    HeaterOff();
+	LightsOff();
+  }
+  else if (temperature < max_temp - 1) {
+    HeaterOn();
+  }
+
+  //Light pushbutton:
+  reading = digitalRead(LightButton);
+  if (reading == HIGH && previous == LOW) {
+    if (LightButtonState == HIGH) {
+      LightsOff ();
+    }
+    else {
+      LightsOn ();
+    }
+  }
+
+  // Alarm.delay(1000); // wait one second between clock display
+}
+
+void Day () {
+  Serial.println("***Day mode***");
+  LightsOn();
+}
+
+void Night () {
+  Serial.println("***Night mode***");
+  LightsOff();
+}
+
+void LightsOn() {
+  digitalWrite(lightsrelay, LOW); // Set Lights On
+  LightButtonState = HIGH;
+  Serial.println("Lights On");
+}
+
+void LightsOff() {
+  digitalWrite(lightsrelay, HIGH); // Set Lights Off
+  LightButtonState = LOW;
+  Serial.println("Lights Off");
+}
+
+void HeaterOn() {
+  digitalWrite(heaterrelay, LOW); // Set Heater On
+}
+
+void HeaterOff() {
+  digitalWrite(heaterrelay, HIGH); // Set Heater Off
+}
+
+
+ void PumpOn() {
+   digitalWrite(pumprelay, HIGH); // Set Pump On
+   Serial.println("Pump On");
+ }
+
+ void PumpOff() {
+   digitalWrite(pumprelay, LOW); // Set Pump Off
+   Serial.println("Pump Off");
+ }
