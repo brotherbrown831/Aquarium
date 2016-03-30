@@ -86,6 +86,15 @@ void loop(void)
     Serial.print(now.second(), DEC);
     Serial.println();
 
+
+                       /*********************ATO CONTROL************************************/
+ if (floatSwitch1 == LOW) {
+   atoPumpRelay = LOW;
+   Serial.println("Topping off tank");
+   delay (10000);
+   }
+
+                       /*********************TEMP CONTROL************************************/
   sensors.requestTemperatures(); // Send the command to get temperatures
   Serial.print("Water Temperature is: ");
   currentTemp = (sensors.getTempCByIndex(0)*1.8 +32.0);
@@ -104,30 +113,30 @@ void loop(void)
    Serial.println("Max Temp exceeded, turning off lights");
 } 
  
- 
- 
-  
-/**************************MASTER SCHEDULE*************************************/  
+                   /**************************MASTER SCHEDULE*************************************/  
 if ((now.hour >= 10) && (now.hour < 18) ) {
   Day ();
   }
   
-if ((myRTC.hours >= 19)) {
+if ((now.hours >= 19)) {
   Night ();
   }
-if ((myRTC.hours <= 9)) {
+if ((now.hours <= 9)) {
   Night ();
   }  
-  
 }
 
 
 /***********************************CALLED FUNCTIONS****************************/
 void Day(){
   lightRelay = LOW;
+  pumpRelay = LOW;
+  powHeadRelay = LOW;
 }
   
 void Night(){
   lightRelay = HIGH;
+  pumpRelay = LOW;
+  powHeadRelay = LOW;
 }  
   
