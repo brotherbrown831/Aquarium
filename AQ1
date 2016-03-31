@@ -32,7 +32,7 @@ const byte buttonLights = 5;  //lights over ride
 
 int targetTemp = 78;
 int MAXTEMP    = 80;
-
+int floatState1 = 0;
 int buttonLightsState = 0;
 
 /*************************SETUP**********************************************/
@@ -88,43 +88,49 @@ void loop(void)
 
 
   /*********************ATO CONTROL************************************/
-  if (floatSwitch1 == LOW) {
+  floatState1 = digitalRead(floatSwitch1);
+  if (floatState1 == LOW) {
     digitalWrite(atoPumpRelay, LOW);
     Serial.println("Topping off tank");
     delay (1000);
   }
-
-  /*********************TEMP CONTROL************************************/
-  sensors.requestTemperatures(); // Send the command to get temperatures
-  Serial.print("Water Temperature is: ");
-  int currentTemp;
-  currentTemp = (sensors.getTempCByIndex(0) * 1.8 + 32.0);
-  Serial.println(currentTemp);
-  delay (3000);
-
-  if (currentTemp >= targetTemp) {
-    digitalWrite(heaterRelay, HIGH);
-  }
   else {
-    digitalWrite(heaterRelay, LOW);
+    digitalWrite(atoPumpRelay, HIGH);
   }
 
-  if (currentTemp >= MAXTEMP) {
-    digitalWrite(lightsRelay, HIGH);
-    Serial.println("Max Temp exceeded, turning off lights");
-  }
 
-  /**************************MASTER SCHEDULE*************************************/
-  if ((now.hour() >= 10) && (now.hour() < 18)) {
-    Day ();
-  }
 
-  if (now.hour() >= 19) {
-    Night();
-  }
-  if (now.hour() <= 9) {
-    Night();
-  }
+/*********************TEMP CONTROL************************************/
+sensors.requestTemperatures(); // Send the command to get temperatures
+Serial.print("Water Temperature is: ");
+int currentTemp;
+currentTemp = (sensors.getTempCByIndex(0) * 1.8 + 32.0);
+Serial.println(currentTemp);
+delay (3000);
+
+if (currentTemp >= targetTemp) {
+  digitalWrite(heaterRelay, HIGH);
+}
+else {
+  digitalWrite(heaterRelay, LOW);
+}
+
+if (currentTemp >= MAXTEMP) {
+  digitalWrite(lightsRelay, HIGH);
+  Serial.println("Max Temp exceeded, turning off lights");
+}
+
+/**************************MASTER SCHEDULE*************************************/
+if ((now.hour() >= 10) && (now.hour() < 18)) {
+  Day ();
+}
+
+if (now.hour() >= 19) {
+  Night();
+}
+if (now.hour() <= 9) {
+  Night();
+}
 }
 
 
