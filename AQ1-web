@@ -1,1 +1,220 @@
-.
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <Wire.h>
+#include "RTClib.h"
+#include <Ethernet.h>> // used to communicate with the ethernet controller 
+
+#if defined(ARDUINO_ARCH_SAMD)  // for Zero, output on USB Serial console
+#define Serial SerialUSB
+#endif
+
+RTC_DS1307 rtc;
+#define ONE_WIRE_BUS 2   //Temp Sensor Pin
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
+// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+OneWire oneWire(ONE_WIRE_BUS);
+
+// Pass our oneWire reference to Dallas Temperature.
+DallasTemperature sensors(&oneWire);
+
+// Here we setup the webserver. We need to supply a mac address. 
+// Some ethernet boards have a label attached with a mac address you can use. 
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; 
+IPAddress ip(192, 168, 1, 45); // IP address, may need to change depending on network 
+EthernetServer server(80); // create a server at port 80
+
+const byte lightsRelay = 22; //Relay 1
+const byte pumpRelay   = 24; //Relay 2
+const byte powHeadRelay = 26; //Relay 3
+const byte heaterRelay = 28; //Relay 4
+const byte atoPumpRelay = 30; //Relay 5
+
+const byte floatSwitch1 = 3;  //Primary
+const byte floatSwitch2 = 4;  //Backup
+const byte buttonLights = 5;  //lights over ride
+const byte buttonPower  = 6;  //Power Switch
+
+int targetTemp = 78;
+int MAXTEMP    = 80;
+int floatState1 = 0;
+int buttonLightsState = 0;
+int buttonPowerState = 0;
+
+/*************************SETUP**********************************************/
+void setup(void)
+{
+  Ethernet.begin(mac, ip); // initialize Ethernet device 
+  server.begin(); // start to listen for clients 
+
+  // start serial port
+  while (!Serial);
+
+  Serial.begin(57600);
+  Serial.print("server is at "); 
+  Serial.println(Ethernet.localIP());
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    while (1);
+  }
+  // Start up the library
+  sensors.begin();
+
+  if (! rtc.isrunning()) {
+    Serial.println("RTC is NOT running!");
+    // following line sets the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  }
+/******************RELAYS**************/  
+  pinMode(lightsRelay, OUTPUT);
+  pinMode(heaterRelay, OUTPUT);
+  pinMode(pumpRelay, OUTPUT);
+  pinMode(atoPumpRelay, OUTPUT);
+  pinMode(powHeadRelay, OUTPUT);
+  digitalWrite(lightsRelay, HIGH);
+  digitalWrite(heaterRelay, HIGH);
+  digitalWrite(pumpRelay, HIGH);
+  digitalWrite(atoPumpRelay, HIGH);
+  digitalWrite(powHeadRelay, HIGH);
+
+/***************Buttons*************/
+  pinMode(buttonLights, INPUT);
+  pinMode(buttonPower, INPUT);
+  digitalWrite(buttonLights, HIGH)
+  digitalWrite(buttonPower, HIGH)
+  
+  
+/*********Float Switches***********/
+  pinMode(floatSwitch1, INPUT);
+  pinMode(floatSwitch2, INPUT);
+  digitalWrite(floatSwitch1, HIGH);
+  digitalWrite(floatSwitch2, HIGH);
+}
+
+/*******************************Main Loop******************************/
+void loop(void)
+{
+  DateTime now = rtc.now();
+  Serial.print(now.hour(), DEC);
+  Serial.print(':');
+  Serial.print(now.minute(), DEC);
+  Serial.print(':');
+  Serial.print(now.second(), DEC);
+  Serial.println();
+
+  /************************Web Server Settings****************/
+  EthernetClient client = server.available(); 
+  if (client) { 
+     Serial.println("new client"); 
+     // an http request ends with a blank line 
+     boolean currentLineIsBlank = true; 
+      while (client.connected()) { 
+         if (client.available()) { 
+             char c = client.read(); 
+             Serial.write(c); 
+             // if you've gotten to the end of the line (received a newline 
+             // character) and the line is blank, the http request has ended, 
+             // so you can send a reply 
+            if (c == '\n' && currentLineIsBlank) { 
+              // send a standard http response header 
+              client.println("HTTP/1.1 200 OK"); 
+              client.println("Content-Type: text/html"); 
+              client.println("Connection: close"); 
+              // the connection will be closed after completion of the response 
+              client.println("Refresh: 5"); // refresh the page automatically every 5 sec 
+              client.println(); 
+              client.println("<!DOCTYPE HTML>"); 
+              client.println("<html lang="en">"); 
+              client.println("<head>"); 
+              client.println("<meta charset="utf-8">"); 
+              client.println("<title>Aquarium</title>"); 
+              client.println("</head>"); 
+              client.println("<body>");
+              sensors.requestTemperatures();
+			  client.print("Temperature is ");
+              int currentTemp;
+              currentTemp = (sensors.getTempCByIndex(0) * 1.8 + 32.0);
+              client.println(currentTemp);
+              client.println(" &#8457;"); // change #8451 to #8457 for fahrenheit 
+              client.println("</body>"); 
+              client.println("</html>");
+			  break;
+			}
+	  	if (c == '\n') { 
+           // you're starting a new line 
+          currentLineIsBlank = true; 
+        } else if (c != '\r') { 
+          // you've gotten a character on the current line 
+          currentLineIsBlank = false; 
+        } 
+      } 
+    } 
+  } 
+  // give the web browser time to receive the data 
+  delay(1); 
+  // close the connection: 
+  client.stop(); 
+  // Serial.println("client disconnected"); 
+  Ethernet.maintain();
+  
+/*********************ATO CONTROL************************************/
+  floatState1 = digitalRead(floatSwitch1);
+  if (floatState1 == LOW) {
+    digitalWrite(atoPumpRelay, LOW);
+    Serial.println("Topping off tank");
+    delay (1000);
+  }
+  else {
+    digitalWrite(atoPumpRelay, HIGH);
+  }
+
+/*********************TEMP CONTROL************************************/
+sensors.requestTemperatures(); // Send the command to get temperatures
+Serial.print("Water Temperature is: ");
+int currentTemp;
+currentTemp = (sensors.getTempCByIndex(0) * 1.8 + 32.0);
+Serial.println(currentTemp);
+delay (3000);
+
+buttonPowerState = digitalRead(buttonPower);
+
+/*****************Master Control********************/
+if(buttonPowerState == LOW) {
+  digitalWrite(pumpRelay, LOW);
+  digitalWrite(powHeadRelay, LOW);
+   if (currentTemp >= targetTemp) {
+    digitalWrite(heaterRelay, HIGH);
+    }
+   else {
+    digitalWrite(heaterRelay, LOW); }
+   if ((now.hour() >= 10) && (now.hour() < 18)) {
+    LightsOn (); }
+   else {	
+    LightsOff(); }
+else {
+  digitalWrite(pumpRelay, HIGH);
+  digitalWrite(powHeadRelay, HIGH);
+  digitalWrite(heaterRelay, HIGH);
+  digitalWrite(lightsRelay, HIGH);
+}
+
+if (currentTemp >= MAXTEMP) {
+  LightsOff();
+  Serial.println("Max Temp exceeded, turning off lights");
+}
+}
+/***********************************CALLED FUNCTIONS****************************/
+void LightsOn() {
+  digitalWrite(lightsRelay, LOW);
+}
+
+void LightsOff() {
+  buttonLightsState = digitalRead(buttonLights);
+  if (buttonLightsState == HIGH) {
+  digitalWrite(lightsRelay, HIGH); }
+  else {
+  digitalWrite(lightsRelay, LOW);
+  }
