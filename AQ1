@@ -4,27 +4,27 @@
 #include "RTClib.h"
 
 #if defined(ARDUINO_ARCH_SAMD)  // for Zero, output on USB Serial console
-   #define Serial SerialUSB
+#define Serial SerialUSB
 #endif
 
 RTC_DS1307 rtc;
-
+#define ONE_WIRE_BUS 2   //Temp Sensor Pin
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
 // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
 OneWire oneWire(ONE_WIRE_BUS);
 
-// Pass our oneWire reference to Dallas Temperature. 
+// Pass our oneWire reference to Dallas Temperature.
 DallasTemperature sensors(&oneWire);
 
 // Data wire is plugged into port 2 on the Arduino
-#define ONE_WIRE_BUS 2   //Temp Sensor Pin
+
 
 const byte lightsRelay = 22; //Relay 1
-const byte pumpRelay   = 24; //Relay 2 
-const byte powHeadRelay= 26; //Relay 3
+const byte pumpRelay   = 24; //Relay 2
+const byte powHeadRelay = 26; //Relay 3
 const byte heaterRelay = 28; //Relay 4
-const byte atoPumpRelay= 30; //Relay 5
+const byte atoPumpRelay = 30; //Relay 5
 
 const byte floatSwitch1 = 3;  //Primary
 const byte floatSwitch2 = 4;  //Backup
@@ -39,7 +39,7 @@ int buttonLightsState = 0;
 void setup(void)
 {
   // start serial port
-while (!Serial);  
+  while (!Serial);
 
   Serial.begin(57600);
   if (! rtc.begin()) {
@@ -67,76 +67,76 @@ while (!Serial);
   digitalWrite(pumpRelay, HIGH);
   digitalWrite(atoPumpRelay, HIGH);
   digitalWrite(powHeadRelay, HIGH);
-  
+
   pinMode(floatSwitch1, INPUT);
   pinMode(floatSwitch2, INPUT);
-  digitalWrite(FloatSwitch1, HIGH);
-  digitalWrite(FloatSwitch2, HIGH);
+  digitalWrite(floatSwitch1, HIGH);
+  digitalWrite(floatSwitch2, HIGH);
 
 }
 
 /*******************************Main Loop******************************/
 void loop(void)
-{ 
-    DateTime now = rtc.now();
-    Serial.print(now.hour(), DEC);
-    Serial.print(':');
-    Serial.print(now.minute(), DEC);
-    Serial.print(':');
-    Serial.print(now.second(), DEC);
-    Serial.println();
+{
+  DateTime now = rtc.now();
+  Serial.print(now.hour(), DEC);
+  Serial.print(':');
+  Serial.print(now.minute(), DEC);
+  Serial.print(':');
+  Serial.print(now.second(), DEC);
+  Serial.println();
 
 
-                       /*********************ATO CONTROL************************************/
- if (floatSwitch1 == LOW) {
-   atoPumpRelay = LOW;
-   Serial.println("Topping off tank");
-   delay (10000);
-   }
+  /*********************ATO CONTROL************************************/
+  if (floatSwitch1 == LOW) {
+    digitalWrite(atoPumpRelay, LOW);
+    Serial.println("Topping off tank");
+    delay (1000);
+  }
 
-                       /*********************TEMP CONTROL************************************/
+  /*********************TEMP CONTROL************************************/
   sensors.requestTemperatures(); // Send the command to get temperatures
   Serial.print("Water Temperature is: ");
-  currentTemp = (sensors.getTempCByIndex(0)*1.8 +32.0);
+  int currentTemp;
+  currentTemp = (sensors.getTempCByIndex(0) * 1.8 + 32.0);
   Serial.println(currentTemp);
-  delay (3000); 
- 
- if (currentTemp >= targetTemp) {
-   heaterRelay = HIGH;
-   }
- else{
-   heaterRelay = LOW;
-   }
- 
- if (currentTemp >= MAXTEMP) {
-   lightRelay = HIGH;
-   Serial.println("Max Temp exceeded, turning off lights");
-} 
- 
-                   /**************************MASTER SCHEDULE*************************************/  
-if ((now.hour >= 10) && (now.hour < 18) ) {
-  Day ();
+  delay (3000);
+
+  if (currentTemp >= targetTemp) {
+    digitalWrite(heaterRelay, HIGH);
   }
-  
-if ((now.hours >= 19)) {
-  Night ();
+  else {
+    digitalWrite(heaterRelay, LOW);
   }
-if ((now.hours <= 9)) {
-  Night ();
-  }  
+
+  if (currentTemp >= MAXTEMP) {
+    digitalWrite(lightsRelay, HIGH);
+    Serial.println("Max Temp exceeded, turning off lights");
+  }
+
+  /**************************MASTER SCHEDULE*************************************/
+  if ((now.hour() >= 10) && (now.hour() < 18)) {
+    Day ();
+  }
+
+  if (now.hour() >= 19) {
+    Night();
+  }
+  if (now.hour() <= 9) {
+    Night();
+  }
 }
 
 
 /***********************************CALLED FUNCTIONS****************************/
-void Day(){
-  lightRelay = LOW;
-  pumpRelay = LOW;
-  powHeadRelay = LOW;
+void Day() {
+  digitalWrite(lightsRelay, LOW);
+  digitalWrite(pumpRelay, LOW);
+  digitalWrite(powHeadRelay, LOW);
 }
-  
-void Night(){
-  lightRelay = HIGH;
-  pumpRelay = LOW;
-  powHeadRelay = LOW;
-}  
-  
+
+void Night() {
+  digitalWrite(lightsRelay, HIGH);
+  digitalWrite(pumpRelay, LOW);
+  digitalWrite(powHeadRelay, LOW);
+}
