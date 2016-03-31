@@ -19,7 +19,6 @@ DallasTemperature sensors(&oneWire);
 
 // Data wire is plugged into port 2 on the Arduino
 
-
 const byte lightsRelay = 22; //Relay 1
 const byte pumpRelay   = 24; //Relay 2
 const byte powHeadRelay = 26; //Relay 3
@@ -29,11 +28,13 @@ const byte atoPumpRelay = 30; //Relay 5
 const byte floatSwitch1 = 3;  //Primary
 const byte floatSwitch2 = 4;  //Backup
 const byte buttonLights = 5;  //lights over ride
+const byte buttonPower  = 6;  //Power Switch
 
 int targetTemp = 78;
 int MAXTEMP    = 80;
 int floatState1 = 0;
 int buttonLightsState = 0;
+int buttonPowerState = 0;
 
 /*************************SETUP**********************************************/
 void setup(void)
@@ -57,6 +58,7 @@ void setup(void)
     // January 21, 2014 at 3am you would call:
     // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
   }
+/******************RELAYS**************/  
   pinMode(lightsRelay, OUTPUT);
   pinMode(heaterRelay, OUTPUT);
   pinMode(pumpRelay, OUTPUT);
@@ -68,11 +70,18 @@ void setup(void)
   digitalWrite(atoPumpRelay, HIGH);
   digitalWrite(powHeadRelay, HIGH);
 
+/***************Buttons*************/
+  pinMode(buttonLights, INPUT);
+  pinMode(buttonPower, INPUT);
+  digitalWrite(buttonLights, HIGH)
+  digitalWrite(buttonPower, HIGH)
+  
+  
+/*********Float Switches***********/
   pinMode(floatSwitch1, INPUT);
   pinMode(floatSwitch2, INPUT);
   digitalWrite(floatSwitch1, HIGH);
   digitalWrite(floatSwitch2, HIGH);
-
 }
 
 /*******************************Main Loop******************************/
@@ -86,7 +95,6 @@ void loop(void)
   Serial.print(now.second(), DEC);
   Serial.println();
 
-
   /*********************ATO CONTROL************************************/
   floatState1 = digitalRead(floatSwitch1);
   if (floatState1 == LOW) {
@@ -98,8 +106,6 @@ void loop(void)
     digitalWrite(atoPumpRelay, HIGH);
   }
 
-
-
 /*********************TEMP CONTROL************************************/
 sensors.requestTemperatures(); // Send the command to get temperatures
 Serial.print("Water Temperature is: ");
@@ -108,41 +114,42 @@ currentTemp = (sensors.getTempCByIndex(0) * 1.8 + 32.0);
 Serial.println(currentTemp);
 delay (3000);
 
-if (currentTemp >= targetTemp) {
-  digitalWrite(heaterRelay, HIGH);
-}
+buttonPowerState = digitalRead(buttonPower);
+
+/*****************Master Control********************/
+if(buttonPowerState == LOW) {
+  digitalWrite(pumpRelay, LOW);
+  digitalWrite(powHeadRelay, LOW);
+   if (currentTemp >= targetTemp) {
+    digitalWrite(heaterRelay, HIGH);
+    }
+   else {
+    digitalWrite(heaterRelay, LOW); }
+   if ((now.hour() >= 10) && (now.hour() < 18)) {
+    LightsOn (); }
+   else {	
+    LightsOff(); }
 else {
-  digitalWrite(heaterRelay, LOW);
+  digitalWrite(pumpRelay, HIGH);
+  digitalWrite(powHeadRelay, HIGH);
+  digitalWrite(heaterRelay, HIGH);
+  digitalWrite(lightsRelay, HIGH);
 }
 
 if (currentTemp >= MAXTEMP) {
-  digitalWrite(lightsRelay, HIGH);
+  LightsOff();
   Serial.println("Max Temp exceeded, turning off lights");
 }
-
-/**************************MASTER SCHEDULE*************************************/
-if ((now.hour() >= 10) && (now.hour() < 18)) {
-  Day ();
 }
-
-if (now.hour() >= 19) {
-  Night();
-}
-if (now.hour() <= 9) {
-  Night();
-}
-}
-
-
 /***********************************CALLED FUNCTIONS****************************/
-void Day() {
+void LightsOn() {
   digitalWrite(lightsRelay, LOW);
-  digitalWrite(pumpRelay, LOW);
-  digitalWrite(powHeadRelay, LOW);
 }
 
-void Night() {
-  digitalWrite(lightsRelay, HIGH);
-  digitalWrite(pumpRelay, LOW);
-  digitalWrite(powHeadRelay, LOW);
-}
+void LightsOff() {
+  buttonLightsState = digitalRead(buttonLights);
+  if (buttonLightsState == HIGH) {
+  digitalWrite(lightsRelay, HIGH); }
+  else {
+  digitalWrite(lightsRelay, LOW);
+  }
