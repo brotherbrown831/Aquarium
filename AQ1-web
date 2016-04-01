@@ -127,19 +127,14 @@ void loop(void)
               client.println("Refresh: 5"); // refresh the page automatically every 5 sec 
               client.println(); 
               client.println("<!DOCTYPE HTML>"); 
-              client.println("<html lang="en">"); 
-              client.println("<head>"); 
-              client.println("<meta charset="utf-8">"); 
-              client.println("<title>Aquarium</title>"); 
-              client.println("</head>"); 
-              client.println("<body>");
+              client.println("<html>"); 
+              client.println("<head>");
               sensors.requestTemperatures();
-			  client.print("Temperature is ");
+	      client.print("Temperature is ");
               int currentTemp;
               currentTemp = (sensors.getTempCByIndex(0) * 1.8 + 32.0);
               client.println(currentTemp);
               client.println(" &#8457;"); // change #8451 to #8457 for fahrenheit 
-              client.println("</body>"); 
               client.println("</html>");
 			  break;
 			}
@@ -193,7 +188,8 @@ if(buttonPowerState == LOW) {
    if ((now.hour() >= 10) && (now.hour() < 18)) {
     LightsOn (); }
    else {	
-    LightsOff(); }
+    LightsOff(); } 
+  }
 else {
   digitalWrite(pumpRelay, HIGH);
   digitalWrite(powHeadRelay, HIGH);
@@ -218,3 +214,4 @@ void LightsOff() {
   else {
   digitalWrite(lightsRelay, LOW);
   }
+}
